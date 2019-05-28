@@ -3,7 +3,7 @@
 ## commands
 * LM + Attn: Soft c soft a
 ```
-python main.py --devid 3 --model crnnlmsa --tieweights --lr 0.001 --bsz 6 --K 64 --Ke 16 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix dbg-soft --save
+python main.py --filepath ../rotowIrE/rotowire --devid 3 --model crnnlmsa --tieweights --lr 0.001 --bsz 6 --K 64 --Ke 16 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix dbg-soft --save
 ```
 * LM + Attn: Hard c hard a, trained from soft
 ```
