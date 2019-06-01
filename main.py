@@ -14,29 +14,20 @@ import torch.optim as optim
 
 #from torchtext.data import BucketIterator
 
-import data
-from data import RotoExample
+import data.rotowire as data
+from data.rotowire import RotoExample
 
-import nytdata
-from nytdata import NytExample
+import data.nyt as nytdata
+from data.nyt import NytExample
 
 from models.rnnlm import RnnLm
 
 from models.crnnlm import CrnnLm
-from models.crnnmlm import CrnnMlm
-from models.crnnmlmc_em import CrnnMlmCem
-
 
 from models.crnnlma import CrnnLmA
 from models.crnnlmsa import CrnnLmSa
 from models.crnnlmca import CrnnLmCa
-from models.crnnlmqca import CrnnLmQca
 from models.crnnlmeqca import CrnnLmEqca
-from models.crnnlmecqca import CrnnLmEcqca
-from models.crnnlmesqca import CrnnLmEsqca
-from models.crnnlmcqca import CrnnLmCqca
-
-from models.crnnlmb import CrnnLmB
 
 from models.lvm import Lvm
 
@@ -113,17 +104,10 @@ def get_args():
         choices=[
             "sa",
             "rnnlm", "crnnlm", "crnnmlm", "HMM", "HSMM",
-            "crnnmlmc",
-            "crnnmlmc_em",
             "crnnlma",
             "crnnlmsa", # lol, have gating between nuisance and copy model
             "crnnlmca",
-            "crnnlmb",
-            "crnnlmqca",
             "crnnlmeqca",
-            "crnnlmecqca",
-            "crnnlmesqca",
-            "crnnlmcqca",
             "nccrnnlm",
         ],
         default="rnnlm"
@@ -134,13 +118,11 @@ def get_args():
     parser.add_argument("--noattnvalues", action="store_true")
     parser.add_argument("--v2d", action="store_true")
     parser.add_argument("--untie", action="store_true")
-    parser.add_argument("--bayesv", action="store_true")
     parser.add_argument("--vctxt", action="store_true")
     parser.add_argument("--etvctxt", action="store_true",
         help="unused, but was supposed to be to let content model see entity and value")
     parser.add_argument("--wcv", action="store_true")
     parser.add_argument("--initvy", action="store_true")
-    parser.add_argument("--glove", action="store_true")
     parser.add_argument("--nuisance", action="store_true")
     parser.add_argument("--initu", action="store_true")
     parser.add_argument("--initg", action="store_true")
@@ -195,19 +177,14 @@ def get_args():
 
 args = get_args()
 print(args)
-#modelname = f"{args.prefix}-{args.dataset}-{args.model}-{args.mode}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-lrd{args.lrd}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Ke{args.Ke}-Kl{args.Kl}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-g{args.glove}-n{args.nuisance}-iu{args.initu}-ig{args.initg}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-bv{args.bayesv}"
-modelname = f"{args.prefix}-{args.model}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Ke{args.Ke}-Kl{args.Kl}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-g{args.glove}-n{args.nuisance}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-qs{args.qwarmupsteps}-{args.qsteps}"
+#modelname = f"{args.prefix}-{args.dataset}-{args.model}-{args.mode}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-lrd{args.lrd}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Ke{args.Ke}-Kl{args.Kl}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-n{args.nuisance}-iu{args.initu}-ig{args.initg}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-bv{args.bayesv}"
+modelname = f"{args.prefix}-{args.model}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Ke{args.Ke}-Kl{args.Kl}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-n{args.nuisance}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-qs{args.qwarmupsteps}-{args.qsteps}"
 if args.model == "crnnlmsa":
     modelname = f"dbg-crnnlmsa-{args.prefix}-{args.model}-v2d{args.v2d}-mlp{args.mlp}-hard{args.hardc}-fix{args.fixedc}-mask{args.maskedc}-pe{args.pretrain_emission}"
 if args.maxlen > 0:
     modelname = f"dbg-model-maxlen{args.maxlen}"
 if args.save:
     pathlib.Path(modelname).mkdir(parents=True, exist_ok=True)
-
-if args.old_model:
-    from models.crnnmlmc_old import CrnnMlmC
-else:
-    from models.crnnmlmc import CrnnMlmC
 
 random.seed(args.seed)
 np.random.seed(args.seed)
@@ -232,11 +209,6 @@ data.build_vocab(ENT, TYPE, VALUE, TEXT, train, min_freq=args.minfreq)
 # is this enough?
 TEXT.vocab.extend(VALUE.vocab)
 VALUE_TEXT.vocab = TEXT.vocab
-
-# preload vectors
-if args.glove:
-    from torchtext.vocab import GloVe
-    TEXT.vocab.load_vectors(vectors=GloVe(name="840B"))
 
 iterator = data.RotowireIterator if args.dataset == "rotowire" else nytdata.NytIterator
 train_iter, valid_iter, test_iter = iterator.splits(
@@ -283,48 +255,6 @@ elif args.model == "crnnlm":
         inputfeed = args.inputfeed,
         noattn = args.noattndbg,
     )
-elif args.model == "crnnmlm":
-    model = CrnnMlm(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-    )
-elif args.model == "crnnmlmc":
-    model = CrnnMlmC(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-    )
-elif args.model == "crnnmlmc_em":
-    model = CrnnMlmCem(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-    )
 elif args.model == "crnnlma":
     model = CrnnLmA(
         Ve = ENT.vocab,
@@ -367,46 +297,6 @@ elif args.model == "crnnlmsa":
         fixedc = args.fixedc,
         maskedc = args.maskedc,
     )
-elif args.model == "crnnlmca":
-    model = CrnnLmCa(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-        noattnvalues = args.noattnvalues,
-        jointcopy = args.jointcopy,
-        qc = args.qc,
-        qcrnn = args.qcrnn,
-    )
-elif args.model == "crnnlmqca":
-    model = CrnnLmQca(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-        noattnvalues = args.noattnvalues,
-        jointcopy = args.jointcopy,
-        qc = args.qc,
-        qcrnn = args.qcrnn,
-        temp = args.temp,
-        qconly = args.qconly,
-        v2d = args.v2d,
-        initvy = args.initvy,
-    )
 elif args.model == "crnnlmeqca":
     model = CrnnLmEqca(
         Ve = ENT.vocab,
@@ -428,7 +318,6 @@ elif args.model == "crnnlmeqca":
         qconly = args.qconly,
         v2d = args.v2d,
         initvy = args.initvy,
-        glove = args.glove,
         nuisance = args.nuisance,
         initu = args.initu,
         tanh = args.tanh,
@@ -438,108 +327,6 @@ elif args.model == "crnnlmeqca":
         bil = args.bil,
         mlp = args.mlp,
         untie = args.untie,
-        bayesv = args.bayesv,
-    )
-elif args.model == "crnnlmecqca":
-    model = CrnnLmEcqca(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-        noattnvalues = args.noattnvalues,
-        jointcopy = args.jointcopy,
-        qc = args.qc,
-        qcrnn = args.qcrnn,
-        temp = args.temp,
-        qconly = args.qconly,
-        v2d = args.v2d,
-        initvy = args.initvy,
-        glove = args.glove,
-        nuisance = args.nuisance,
-        initu = args.initu,
-        tanh = args.tanh,
-        vctxt = args.vctxt,
-        wcv = args.wcv,
-        etvctxt = args.etvctxt,
-        bil = args.bil,
-        mlp = args.mlp,
-        untie = args.untie,
-    )
-elif args.model == "crnnlmesqca":
-    model = CrnnLmEsqca(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-        noattnvalues = args.noattnvalues,
-        jointcopy = args.jointcopy,
-        qc = args.qc,
-        qcrnn = args.qcrnn,
-        temp = args.temp,
-        qconly = args.qconly,
-        v2d = args.v2d,
-        initvy = args.initvy,
-        glove = args.glove,
-        nuisance = args.nuisance,
-        initu = args.initu,
-        tanh = args.tanh,
-        vctxt = args.vctxt,
-        wcv = args.wcv,
-        etvctxt = args.etvctxt,
-        bil = args.bil,
-        mlp = args.mlp,
-    )
-elif args.model == "crnnlmcqca":
-    # Gumbel softmax
-    model = CrnnLmCqca(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-        noattnvalues = args.noattnvalues,
-        jointcopy = args.jointcopy,
-        qc = args.qc,
-        qcrnn = args.qcrnn,
-        v2d = args.v2d,
-        initvy = args.initvy,
-        nuisance = args.nuisance,
-    )
-elif args.model == "crnnlmb":
-    model = CrnnLmB(
-        Ve = ENT.vocab,
-        Vt = TYPE.vocab,
-        Vv = VALUE.vocab,
-        Vx = TEXT.vocab,
-        r_emb_sz = args.emb_sz,
-        x_emb_sz = args.emb_sz,
-        rnn_sz = args.rnn_sz,
-        nlayers = args.nlayers,
-        dropout = args.dp,
-        tieweights = args.tieweights,
-        inputfeed = args.inputfeed,
-        noattnvalues = args.noattnvalues,
-        sigbias = args.sigbias,
     )
 model.to(device)
 print(model)

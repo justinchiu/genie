@@ -43,7 +43,6 @@ class CrnnLmEqca(LvmA):
         qconly = False,
         v2d = False,
         initvy = False,
-        glove = False,
         initu = False,
         tanh = False,
         vctxt = False,
@@ -52,7 +51,6 @@ class CrnnLmEqca(LvmA):
         bil = False,
         mlp = False,
         untie = False,
-        bayesv = False,
     ):
         super(CrnnLmEqca, self).__init__()
 
@@ -71,7 +69,6 @@ class CrnnLmEqca(LvmA):
         self.nokl = True
         self.v2d = v2d
         self.initvy = initvy
-        self.glove = glove
         self.initu = initu
         self.tanh = tanh
         self.vctxt = vctxt
@@ -80,7 +77,6 @@ class CrnnLmEqca(LvmA):
         self.bil = bil
         self.mlp = mlp
         self.untie = untie
-        self.bayesv = bayesv
 
         self.noattn = False
         self.noattnvalues = noattnvalues
@@ -152,7 +148,7 @@ class CrnnLmEqca(LvmA):
         if self.initu:
             self.lutx.weight.data.uniform_(-0.1, 0.1)
         self.lutx.weight.data[Vx.stoi[self.PAD]].fill_(0)
-        if self.glove or self.untie:
+        if self.untie:
             self.lutgx = ntorch.nn.Embedding(
                 num_embeddings = len(Vx),
                 embedding_dim = x_emb_sz,
@@ -160,12 +156,6 @@ class CrnnLmEqca(LvmA):
             ).spec("time", "x")
             if self.initu:
                 self.lutgx.weight.data.uniform_(-0.1, 0.1)
-            if self.Vx.vectors is not None and self.glove:
-                self.lutgx.weight.data.masked_scatter_(
-                    self.Vx.vectors.ne(0),
-                    self.Vx.vectors,
-                )
-                self.lutgx.weight.requires_grad = False
             self.lutgx.weight.data[Vx.stoi[self.PAD]].fill_(0)
         self.rnn = ntorch.nn.LSTM(
             input_size = x_emb_sz
@@ -187,7 +177,7 @@ class CrnnLmEqca(LvmA):
             out_features = len(Vx),
             bias = False,
         ).spec("ctxt", "vocab")
-        if self.glove or self.untie:
+        if self.untie:
             self.gproj = ntorch.nn.Linear(
                 in_features = rnn_sz,
                 out_features = len(Vx),
@@ -269,7 +259,7 @@ class CrnnLmEqca(LvmA):
         # Tie weights
         if tieweights:
             self.proj.weight = self.lutx.weight
-            if self.glove:
+            if self.untie:
                 self.gproj.weight = self.lutgx.weight
         # initialize lutv to lutx
         if self.initvy:
@@ -298,15 +288,7 @@ class CrnnLmEqca(LvmA):
                 dropout = dropout,
                 bidirectional = True,
             ).spec("x", "time", "rnns")
-        if self.bayesv:
-            self.brnnv = ntorch.nn.LSTM(
-                input_size = x_emb_sz,
-                hidden_size = rnn_sz,
-                num_layers = nlayers,
-                bias = False,
-                dropout = dropout,
-                bidirectional = True,
-            ).spec("x", "time", "rnns")
+
         self.Wicopy = ntorch.nn.Linear(
             in_features = 2*rnn_sz,
             out_features = 2,
@@ -493,12 +475,6 @@ class CrnnLmEqca(LvmA):
         # rW_a = g(r, a) = r[a]
         # already concatenated if input feed
         return self.Wcopy(rnn_o).log_softmax("copy")
-        """
-        return self.Wcopy(
-            rnn_o if self.inputfeed else
-            self.Wif(ntorch.cat([rnn_o, ec, tc, vc], "rnns"))
-        ).log_softmax("copy")
-        """
 
     # posterior
     def log_qac_y(self, emb_y, y_info, emb_e, ue_info, emb_t, ut_info, v2dx):
@@ -514,68 +490,6 @@ class CrnnLmEqca(LvmA):
         log_c = self.Wicopy(rnn_oc if self.qcrnn else rnn_o).log_softmax("copy") 
 
         return log_c, log_ea, log_ta, log_va
-
-    # bayes rule
-    def log_qacv_y(self, emb_y, y_info, emb_e, ue_info, emb_t, ut_info, v2dx):
-        rnn_o, _ = self.brnn(emb_y, None, lengths=y_info.lengths)
-        # ea: T x N x R
-        log_ea, ea, ec = attn(rnn_o, self.Wie(emb_e), ue_info.mask, self.temp)
-        log_ta, ta, tc = attn(rnn_o, self.Wit(emb_t), ut_info.mask, self.temp)
-        log_ea = log_ea.rename("els", "e")
-        log_ta = log_ta.rename("els", "t")
-        log_va = log_ea + log_ta
-
-        if self.qcrnn:
-            rnn_oc, _ = self.brnnc(emb_y.detach(), None, lengths=y_info.lengths) 
-        log_c = self.Wicopy(rnn_oc if self.qcrnn else rnn_o).log_softmax("copy") 
-
-        rnn_ov, _ = self.brnnv(emb_y.detach(), None, lengths=y_info.lengths)
-        log_v = self.vproj(rnn_ov).log_softmax("v")
-
-        return log_c, log_ea, log_ta, log_va, log_v
-
-    def log_qc_y(self, emb_y, x_info, emb_e, ue_info, emb_t, ut_info, v2dx):
-        # ea: T x N x R
-        log_ea, ea, ec = attn(rnn_o, emb_e, ue_info.mask)
-        log_ta, ta, tc = attn(rnn_o, emb_t, ut_info.mask)
-        log_ea = log_ea.rename("els", "e")
-        log_ta = log_ta.rename("els", "t")
-        log_va = log_ea + log_ta
-        #vc = log_va.exp().dot(("t", "e"), v2dx)
-        #va = log_va.exp()
-
-        ea = ea.rename("els", "e")
-        ta = ta.rename("els", "t")
-
-        return log_ea, log_ta, log_va
-
-
-    # not needed?
-    def log_py_a(self):
-        pass
-
-    def log_py(self, rnn_o, ctxt, log_pa, vt, y):
-        raise NotImplementedError
-        log_pc_a = self.log_pc_a(rnn_o, ctxt)
-        past = self.Wc(ntorch.cat(
-            [
-                rnn_o.repeat("els", ctxt.shape["els"]),
-                ctxt.repeat("time", rnn_o.shape["time"]),
-            ],
-            "rnns",
-        )).tanh()
-        log_py_ac0 = self.log_py_ac0(past, y)
-        py_ac1 = vt == y
-        py_ac1 = py_ac1._new(py_ac1.type(self.dtype))
-        log_py_ac1 = py_ac1.log()
-
-        # p(y|a) = p(y|a,c=0)p(c=0|a) + p(y|a,c=1)p(c=1|a)
-        log_py_a = logaddexp(
-            log_py_ac0 + log_pc_a.get("copy", 0),
-            log_py_ac1 + log_pc_a.get("copy", 1),
-        )
-        log_pya = log_py_a + log_pa
-        return log_pya.logsumexp("els")
 
 
     def sample_a(self, probs, logits, K, dim, sampledim):
@@ -598,15 +512,6 @@ class CrnnLmEqca(LvmA):
         supattn=False,
     ):
         # shared encoding
-        # r: R x N x Er
-        # Wa r: R x N x H
-        e = self.lute(r[0]).rename("e", "r")
-        #t = self.lutt(r[1]).rename("t", "r")
-        #v = self.lutv(r[2]).rename("v", "r")
-
-        #r = ntorch.cat([e, t, v], "r")
-        #rW = self.Wa(r)
-
         emb_x = self.lutx(x)
 
         emb_e = self.lute(ue)
@@ -650,6 +555,7 @@ class CrnnLmEqca(LvmA):
 
         K = self.K
 
+        # jesus, need to fix this
         # Baseline if sample
         #past = self.Wc(ntorch.cat([rnn_o, vc], "rnns")).tanh().chop(
             #"batch", ("k", "batch"), k=1)
@@ -671,12 +577,8 @@ class CrnnLmEqca(LvmA):
 
         if y is not None:
             emb_y = self.luty(y)
-            if not self.bayesv:
-                log_qc, log_qe, log_qt, log_qv = self.log_qac_y(
-                    emb_y, x_info, emb_e, ue_info, emb_t, ut_info, v2dx)
-            if self.bayesv:
-                log_qc, log_qe, log_qt, log_qv, log_qv_y = self.log_qacv_y(
-                    emb_y, x_info, emb_e, ue_info, emb_t, ut_info, v2dx)
+            log_qc, log_qe, log_qt, log_qv = self.log_qac_y(
+                emb_y, x_info, emb_e, ue_info, emb_t, ut_info, v2dx)
 
         nll = 0.
         kl = 0.
@@ -826,19 +728,14 @@ class CrnnLmEqca(LvmA):
                 #import pdb; pdb.set_trace()
                 #log_py_ac0_t = self.log_py_a(past, y_t)
                 log_py_c0_t = log_py_Ea_t
-                if self.bayesv:
-                    raise NotImplementedError
-                    v2d_flat = v2d.stack(("e", "t"), "r")
-                    import pdb; pdb.set_trace()
-                else:
-                    log_py_ac1_t = (
-                        self.proj(past) if not (self.glove or self.untie) else self.gproj(past)
-                    ).log_softmax("vocab")
-                    log_py_ac1_t = (
-                        log_py_ac1_t.gather("vocab", y_t.repeat("lol", 1), "lol").get("lol", 0)
-                        if y is not None
-                        else log_py_ac1_t
-                    )
+                log_py_ac1_t = (
+                    self.proj(past) if not (self.glove or self.untie) else self.gproj(past)
+                ).log_softmax("vocab")
+                log_py_ac1_t = (
+                    log_py_ac1_t.gather("vocab", y_t.repeat("lol", 1), "lol").get("lol", 0)
+                    if y is not None
+                    else log_py_ac1_t
+                )
                 #log_py_ac1_t = self.log_py_ac1(v2dx_t, v_f_t, y_t)
 
                 # DEBUG NUM COPY
@@ -1105,13 +1002,6 @@ class CrnnLmEqca(LvmA):
             #import pdb; pdb.set_trace()
             backward(bwd_outputs, bwd_grads)
 
-        """
-        if K > 0:
-            e_s = ntorch.cat(e_s, "time")
-            e_s_log_qe = ntorch.cat(e_s_log_qe, "time")
-            t_s = ntorch.cat(t_s, "time")
-            t_s_log_qt = ntorch.cat(t_s_log_qt, "time")
-        """
         if K > 0:
             v_s = ntorch.cat(v_s, "time")
             v_s_log_qv = ntorch.cat(v_s_log_qv, "time")
@@ -1173,6 +1063,7 @@ class CrnnLmEqca(LvmA):
                 #if has_bulls:
                     #import pdb; pdb.set_trace()
             """
+            # factor out checks for teamnames and stuff
         return rvinfo, s, nll, kl
 
 

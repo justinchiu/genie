@@ -1,5 +1,24 @@
 # genie
 
+## Todo
+
+### Experiments
+* evaluate rotowire on full database PR
+* try: gumbel c + hard attn, soft c + hard attn. Reason: avoid soft pretraining, as it biases the model.
+  want to see: inference network gets team names and names with higher prob using content model
+
+### Model
+* translation model CRF, and figure out induction
+
+### Coding
+* pull out code into (conditional) distributions
+* refactor out debugging code and evaluation code into hooks
+* write concrete sampling code + KL + log prob
+* pull out cat vs concrete inference code
+* maybe pull out inference code? this one is difficult
+
+### 
+
 ## commands
 * LM + Attn: Soft c soft a
 ```
