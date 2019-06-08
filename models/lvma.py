@@ -223,6 +223,7 @@ class LvmA(Lvm):
                         v2d, vt2d,
                         y, x_info, T=T, E=E, R=R, learn=learn,
                         supattn=supattn, # hacky
+                        idxs = batch.idxs,
                     )
                     if rvinfo.log_qc_y is None:
                         self.copied += (rvinfo.log_pc.exp().get("copy", 1) > 0.5).sum().item()

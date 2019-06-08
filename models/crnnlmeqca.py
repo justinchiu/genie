@@ -1,4 +1,6 @@
 import math
+from collections import defaultdict
+import heapq
 
 from .lvma import LvmA, RvInfo
 
@@ -61,8 +63,9 @@ class CrnnLmEqca(LvmA):
         self._mode = "elbo"
         self._q = "qay"
         self.K = 0
-        self.Ke = 0
+        self.Kq = 0
         self.Kl = 0
+        self.Kb = 0
 
         # should be:
         # self.nokl = not qconly
@@ -307,6 +310,9 @@ class CrnnLmEqca(LvmA):
 
         self.type(self.dtype)
 
+        # cache for likelihoods?
+        self.cache = defaultdict(lambda: defaultdict(list))
+
     @property
     def mode(self):
         return self._mode
@@ -316,10 +322,12 @@ class CrnnLmEqca(LvmA):
         # maybe iwae later, but i don't really care about it
         if mode == "elbo":
             # elbo can be exact or approximated through sampling
-            assert(self.K >= 0)
+            #assert(self.K >= 0)
+            pass
         elif mode == "marginal":
             # only exact for marginal
-            assert(self.K == 0)
+            #assert(self.K == 0)
+            pass
         else:
             raise IndexError("self.mode must be elbo or marginal")
         self._mode = mode
@@ -412,6 +420,7 @@ class CrnnLmEqca(LvmA):
 
             output = rnn_o
         else:
+            # no need for input feeding ever
             log_ea, ea, ec = [], [], []
             log_ta, ta, tc = [], [], []
             log_va, va, vc = [], [], []
@@ -462,18 +471,9 @@ class CrnnLmEqca(LvmA):
 
         return log_ea, ea, ec, log_ta, ta, tc, log_va, va, vc, output, s
 
-    """
-    def log_pc_a(self, rnn_o, rW_a):
-        # rnn_o = f(y<t)
-        # rW_a = g(r, a) = r[a]
-        return self.Wcopy(rnn_o + rW_a).log_softmax("copy")
-    """
 
-    def log_pc(self, rnn_o, ec, tc, vc):
+    def log_pc(self, rnn_o):
         # rnn_o = f(y<t)
-        # condition on soft attention
-        # rW_a = g(r, a) = r[a]
-        # already concatenated if input feed
         return self.Wcopy(rnn_o).log_softmax("copy")
 
     # posterior
@@ -510,6 +510,7 @@ class CrnnLmEqca(LvmA):
         T=None, E=None, R=None,
         learn=False,
         supattn=False,
+        idxs=None,
     ):
         # shared encoding
         emb_x = self.lutx(x)
@@ -534,7 +535,7 @@ class CrnnLmEqca(LvmA):
                 vt2d.stack(("t", "e"), "time")
             )
                 .chop("time", ("t", "e"), t=v2d.shape["t"])
-                .rename("x", "rnns") if self.glove or self.untie else None
+                .rename("x", "rnns") if self.untie else None
         )
 
         # shared attention
@@ -546,7 +547,7 @@ class CrnnLmEqca(LvmA):
 
         # use soft attention over everything for p(c | y_<-t)
         # maybe no vc?
-        log_pc = self.log_pc(rnn_o, ec, tc, vc)
+        log_pc = self.log_pc(rnn_o)
 
         # anneal vc to 0
         if self.c_anneal_steps > 0 and self.steps > self.c_warmup_steps:
@@ -665,50 +666,116 @@ class CrnnLmEqca(LvmA):
                 log_pv_t = (log_pe_t + log_pt_t).stack(("e", "t"), "v")
 
                 # for baseline
-                if self.Kl > 0:
-                    B_v_s_t, B_v_s_log_qv = self.sample_a(log_qv_t.exp(), log_qv_t, self.Kl, "v", "k")
+                if self.Kb > 0:
+                    B_v_s_t, B_v_s_log_qv = self.sample_a(log_qv_t.exp(), log_qv_t, self.Kb, "v", "k")
                     B_v_s_log_pv = log_pv_t.gather("v", B_v_s_t, "k")
 
-                C_v_s_log_qv, C_v_s_t = log_qv_t.topk("v", self.Ke)
-                C_v_s_log_pv = log_pv_t.gather("v", C_v_s_t, "v")
-                C_v_s_log_qv = C_v_s_log_qv.rename("v", "k")
-                C_v_s_log_pv = C_v_s_log_pv.rename("v", "k")
-                C_v_s_t = C_v_s_t.rename("v", "k")
+                if self.Kl > 0:
+                    # get top likelihoods from cache
+                    particles = []
+                    for batch, s_idx in enumerate(idxs):
+                        batch_p = []
+                        for time in range(rnn_t.shape["time"]):
+                            cache = self.cache[s_idx][time + t * T]
+                            # dbg, remove this
+                            cache = self.cache[2228][0]
+                            lset = set(x[1] for x in cache)
+                            batch_p.append(lset)
+                        particles.append(batch_p)
 
-                # weight nll by this
-                C_v_s_qv = C_v_s_log_qv.exp()
-                C_Zv = C_v_s_log_qv.logsumexp("k").exp()
+                if self.Kq > 0:
+                    # take the topk from the complement of the cache samples
+                    Ks = self.Kq + self.Kl
+                    C_v_s_log_qv, C_v_s_t = log_qv_t.topk("v", Ks)
+                    # already sorted
+                    if self.Kl > 0:
+                        # batch x time x K
+                        batches = []
+                        for batch, s_idx in enumerate(idxs):
+                            times = []
+                            for time in range(rnn_t.shape["time"]):
+                                ok = particles[batch][time]
+                                lol = C_v_s_t[{"batch": batch, "time": time}]
+                                lollist = lol.tolist()
+                                lolset = set(lollist)
+                                diff = ok - lolset
+                                cap = lolset & ok
+                                take = Ks - len(diff)
+                                samples = []
+                                i = 0
+                                while i < take:
+                                    if lollist[i] not in ok:
+                                        samples.append(lollist[i])
+                                        i += 1
+                                samples.extend(list(ok))
+                                if self.steps > 0:
+                                    import pdb; pdb.set_trace()
+                                times.append(samples)
+                            batches.append(times)
+                        shape = C_v_s_t.shape
+                        C_v_s_t = NamedTensor(
+                            torch.LongTensor(batches).to(C_v_s_t.values.device),
+                            names = ("batch", "time", "v"),
+                        )
+                        C_v_s_log_qv = log_qv_t.gather("v", C_v_s_t, "v")
+                        if self.steps > 0:
+                            import pdb; pdb.set_trace()
+                    C_v_s_log_pv = log_pv_t.gather("v", C_v_s_t, "v")
+                    C_v_s_log_qv = C_v_s_log_qv.rename("v", "k")
+                    C_v_s_log_pv = C_v_s_log_pv.rename("v", "k")
+                    C_v_s_t = C_v_s_t.rename("v", "k")
 
+                    # weight nll by this
+                    C_v_s_qv = C_v_s_log_qv.exp()
+                    C_Zv = C_v_s_log_qv.logsumexp("k").exp()
+
+
+                num_enum = self.Kq + self.Kl
+                Kc = self.K - num_enum
                 nC_log_qv = log_qv_t.clone()
-                nC_log_qv.scatter_("v", C_v_s_t, C_v_s_log_qv.clone().fill_(float("-inf")), "k")
+                if self.Kq > 0:
+                    nC_log_qv.scatter_("v", C_v_s_t, C_v_s_log_qv.clone().fill_(float("-inf")), "k")
                 # reciprocal of normalizing constant, multiply MC term by this
                 nC_Zv = nC_log_qv.logsumexp("v").exp()
                 nC_qv = nC_log_qv.softmax("v")
 
-                nC_v_s_t, nC_v_s_log_qv = self.sample_a(nC_qv, log_qv_t, self.K - self.Ke, "v", "k")
+                nC_v_s_t, nC_v_s_log_qv = self.sample_a(nC_qv, log_qv_t, Kc, "v", "k")
                 nC_v_s_log_pv = log_pv_t.gather("v", nC_v_s_t, "k")
                 nC_v_s_qv = nC_v_s_log_qv.exp()
 
                 # sampled and flatten values at timestep t
-                v2dx_t_flat = (v2dx_t if not (self.glove or self.untie) else v2dgx_t).stack(("e", "t"), "r")
+                v2dx_t_flat = (v2dx_t if not self.untie else v2dgx_t).stack(("e", "t"), "r")
 
-                if self.Kl > 0:
+
+                if self.Kb > 0:
                     B_v_f_t = v2dx_t_flat.gather("r", B_v_s_t.rename("v", "k"), "k")
-                C_v_f_t = v2dx_t_flat.gather("r", C_v_s_t.rename("v", "k"), "k")
+                if self.Kq > 0:
+                    C_v_f_t = v2dx_t_flat.gather("r", C_v_s_t.rename("v", "k"), "k")
                 nC_v_f_t = v2dx_t_flat.gather("r", nC_v_s_t, "k")
 
-                if self.Kl > 0:
-                    v_f_t = ntorch.cat([B_v_f_t, C_v_f_t, nC_v_f_t], "k")
-                    v_s_log_qv_t = ntorch.cat([B_v_s_log_qv, C_v_s_log_qv, nC_v_s_log_qv], "k")
-                    v_s_log_pv_t = ntorch.cat([B_v_s_log_pv, C_v_s_log_pv, nC_v_s_log_pv], "k")
-                else:
-                    v_f_t = ntorch.cat([C_v_f_t, nC_v_f_t], "k")
-                    v_s_log_qv_t = ntorch.cat([C_v_s_log_qv, nC_v_s_log_qv], "k")
-                    v_s_log_pv_t = ntorch.cat([C_v_s_log_pv, nC_v_s_log_pv], "k")
+                samples = []
+                log_probs_q = []
+                log_probs_p = []
+                if self.Kb > 0:
+                    samples.append(B_v_f_t)
+                    log_probs_q.append(B_v_s_log_qv)
+                    log_probs_p.append(B_v_s_log_pv)
+                if self.Kq > 0:
+                    samples.append(C_v_f_t)
+                    log_probs_q.append(C_v_s_log_qv)
+                    log_probs_p.append(C_v_s_log_pv)
+                if Kc > 0:
+                    samples.append(nC_v_f_t)
+                    log_probs_q.append(nC_v_s_log_qv)
+                    log_probs_p.append(nC_v_s_log_pv)
+                v_f_t = ntorch.cat(samples, "k")
+                v_s_log_qv_t = ntorch.cat(log_probs_q, "k")
+                v_s_log_pv_t = ntorch.cat(log_probs_p, "k")
+                import pdb; pdb.set_trace()
 
                 # for weighting only, detach before using in all cases
                 # \sum_v q(v) g(v) + q(nC)E_{v~nC}[g(v)]
-                v_s_qv_t = ntorch.cat([C_v_s_qv, nC_Zv.repeat("k", self.K - self.Ke) / (self.K - self.Ke)], "k")
+                v_s_qv_t = ntorch.cat([C_v_s_qv, nC_Zv.repeat("k", Kc) / Kc], "k")
 
                 ctxt = v_f_t
 
@@ -729,7 +796,7 @@ class CrnnLmEqca(LvmA):
                 #log_py_ac0_t = self.log_py_a(past, y_t)
                 log_py_c0_t = log_py_Ea_t
                 log_py_ac1_t = (
-                    self.proj(past) if not (self.glove or self.untie) else self.gproj(past)
+                    self.proj(past) if not self.untie else self.gproj(past)
                 ).log_softmax("vocab")
                 log_py_ac1_t = (
                     log_py_ac1_t.gather("vocab", y_t.repeat("lol", 1), "lol").get("lol", 0)
@@ -834,9 +901,9 @@ class CrnnLmEqca(LvmA):
                         log_py_ac1_t + math.log(0.5)
                             + (v_s_log_pv_t - v_s_log_qv_t),# * kl_coef,
                     )
-                    if self.Kl > 0:
-                        Bt = Eqa_log_py_a_t.narrow("k", 0, self.Kl).mean("k")
-                        log_py_z = Eqa_log_py_a_t.narrow("k", self.Kl, self.K)
+                    if self.Kb > 0:
+                        Bt = Eqa_log_py_a_t.narrow("k", 0, self.Kb).mean("k")
+                        log_py_z = Eqa_log_py_a_t.narrow("k", self.Kb, K)
                     else:
                         log_py_z = Eqa_log_py_a_t
                     nll_t = -(log_py_z * v_s_qv_t.detach()).sum("k")[y_maskt].sum()
@@ -865,7 +932,7 @@ class CrnnLmEqca(LvmA):
                         Bt = log_py_Ea_t
                     score = (log_py_z - Bt).detach()
                     self.delta = (log_py_z.exp() - Bt.exp()).detach()
-                    rewardt = score * v_s_log_qv_t.narrow("k", self.Kl, self.K)
+                    rewardt = score * v_s_log_qv_t.narrow("k", self.Kb, K)
                     rewardt = -(rewardt * v_s_qv_t.detach()).sum("k")[y_maskt].sum()
                     if self.qconly:
                         rewardt = 0
@@ -906,6 +973,29 @@ class CrnnLmEqca(LvmA):
                         v2dgx_grads.append(v2dgx_t._new(v2dgx_t.values.grad))
                     #if self.steps > 200:
                         #import pdb; pdb.set_trace()
+                        
+                    # cache likelihoods
+                    scores, indices = log_py_z.topk("k", 16, sorted=True, largest=True)
+                    if self.Kl > 0:
+                        for batch, s_idx in enumerate(idxs):
+                            scores_b = scores.get("batch", batch)
+                            indices_b = indices.get("batch", batch)
+                            for time in range(rnn_t.shape["time"]):
+                                # fix time offset because of chopping
+                                this_time = t * T + time
+                                w_score = scores_b.get("time", time)
+                                w_idx = indices_b.get("time", time)
+                                for w_s, w_i in zip(w_score.tolist(), w_idx.tolist()):
+                                    heapq.heappush(self.cache[s_idx][this_time], (w_s, w_i))
+                                # truncate
+                                self.cache[s_idx][this_time] = heapq.nlargest(
+                                    self.Kl, self.cache[s_idx][this_time])
+                                # maintain heap invariant
+                                heapq.heapify(self.cache[s_idx][this_time])
+                                # what about repeats? this caches the Kl highest likelihoods ever,
+                                # with each repeat treated uniquely
+                                #if self.steps > 0:
+                                    #import pdb; pdb.set_trace()
                 # Add these back in later
                 """
                 e_s.append(e_s_t.detach())

@@ -59,7 +59,7 @@ class RotoExample(Example):
         exs = []
         jsonlist = json.load(data)
 
-        for x in jsonlist:
+        for x_idx, x in enumerate(jsonlist):
             entities = []
             types = []
             values = []
@@ -169,6 +169,7 @@ class RotoExample(Example):
                     ie_etv, ie_et_d = get_ie(sen)
                     setattr(ex, "ie_etv",      ie_etv)
                     setattr(ex, "ie_et_d",     ie_et_d)
+                    setattr(ex, "idx",         x_idx)
                     exs.append(ex)
             else:
                 ex = cls()
@@ -184,6 +185,7 @@ class RotoExample(Example):
                 ie_etv, ie_et_d = get_ie(text)
                 setattr(ex, "ie_etv",      ie_etv)
                 setattr(ex, "ie_et_d",     ie_et_d)
+                setattr(ex, "idx",         x_idx)
                 exs.append(ex)
 
         if supex >= 0:
@@ -426,6 +428,9 @@ class RotowireBatch(Batch):
             setattr(self, "ie_et_d", ie_d)
             setattr(self, "num_cells", num_cells)
 
+            # indices
+            idxs = [x.idx for x in data]
+            setattr(self, "idxs", idxs)
 
     def __str__(self):
         if not self.__dict__:

@@ -327,6 +327,7 @@ class NytBatch(Batch):
                 if field is not None:
                     batch = [getattr(x, name) for x in data]
                     setattr(self, name, field.process(batch, device=device))
+            import pdb; pdb.set_trace()
 
             # 2d attn
             maxe = max(len(x.uentities) for x in data)

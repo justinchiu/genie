@@ -63,10 +63,10 @@ def get_args():
     parser.add_argument("--exactepochs", default=4, type=int)
 
     parser.add_argument("--clip", default=5, type=float)
-    parser.add_argument("--lr", default=0.01, type=float)
+    parser.add_argument("--lr", default=0.001, type=float)
     parser.add_argument("--lrd", default=0.1, type=float)
     parser.add_argument("--pat", default=0, type=int)
-    parser.add_argument("--dp", default=0.3, type=float)
+    parser.add_argument("--dp", default=0, type=float)
     parser.add_argument("--wdp", default=0, type=float)
     parser.add_argument("--wd", default=1e-4, type=float)
 
@@ -80,9 +80,11 @@ def get_args():
     parser.add_argument("--T", default=64, type=int, help="Time split")
     parser.add_argument("--E", default=32, type=int, help="Entity split")
     parser.add_argument("--R", default=4, type=int, help="Relation (type) split")
-    parser.add_argument("--K", default=64, type=int)
-    parser.add_argument("--Ke", default=16, type=int)
-    parser.add_argument("--Kl", default=16, type=int)
+    parser.add_argument("--K", default=16, type=int, help="total number of particles")
+    parser.add_argument("--Kq", default=16, type=int, help="top Kq from q(z) to enumerate over")
+    parser.add_argument("--Kl", default=16, type=int, help="top Kl from l(z)")
+    parser.add_argument("--Kb", default=16, type=int, help="Samples for baseline if not LOO")
+    parser.add_argument("--loo", action="store_true", help="LOO baseline")
     parser.add_argument("--mode", choices=["elbo", "marginal", "iwae"], default="elbo")
     parser.add_argument("--q", choices=["pa", "qay", "pay"], default="qay")
 
@@ -105,9 +107,9 @@ def get_args():
             "sa",
             "rnnlm", "crnnlm", "crnnmlm", "HMM", "HSMM",
             "crnnlma",
-            "crnnlmsa", # lol, have gating between nuisance and copy model
+            "crnnlmsa", # soft (lm + soft attn)
             "crnnlmca",
-            "crnnlmeqca",
+            "crnnlmeqca", # hard (lm + hard attn)
             "nccrnnlm",
         ],
         default="rnnlm"
@@ -149,7 +151,6 @@ def get_args():
     parser.add_argument("--qcrnn", action="store_true", help="use a sep brnn for qc")
     parser.add_argument("--qconly", action="store_true", help="use a sep brnn for qc")
 
-    parser.add_argument("--sigbias", type=float, default=2)
     parser.add_argument("--temp", type=float, default=1)
     parser.add_argument("--tao", type=float, default=1)
     parser.add_argument("--qtao", type=float, default=0.9)
@@ -178,7 +179,7 @@ def get_args():
 args = get_args()
 print(args)
 #modelname = f"{args.prefix}-{args.dataset}-{args.model}-{args.mode}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-lrd{args.lrd}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Ke{args.Ke}-Kl{args.Kl}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-n{args.nuisance}-iu{args.initu}-ig{args.initg}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-bv{args.bayesv}"
-modelname = f"{args.prefix}-{args.model}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Ke{args.Ke}-Kl{args.Kl}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-n{args.nuisance}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-qs{args.qwarmupsteps}-{args.qsteps}"
+modelname = f"{args.prefix}-{args.model}-es{args.emb_sz}-rs{args.rnn_sz}-b{args.bsz}-lr{args.lr}-dp{args.dp}-tw{args.tieweights}-K{args.K}-Kq{args.Kq}-Kl{args.Kl}-Kb{args.Kb}-ks{args.klannealsteps}-sc{args.supcopy}-q{args.q}-nv{args.noattnvalues}-jc{args.jointcopy}-tf{args.train_from is not None}-qc{args.qc}-qr{args.qcrnn}-t{args.temp}-v2d{args.v2d}-vy{args.initvy}-n{args.nuisance}-t{args.tanh}-b{args.bil}-m{args.mlp}-cs{args.cannealsteps}-cw{args.cwarmupsteps}-pe{args.pretrain_emission}-u{args.untie}-qs{args.qwarmupsteps}-{args.qsteps}"
 if args.model == "crnnlmsa":
     modelname = f"dbg-crnnlmsa-{args.prefix}-{args.model}-v2d{args.v2d}-mlp{args.mlp}-hard{args.hardc}-fix{args.fixedc}-mask{args.maskedc}-pe{args.pretrain_emission}"
 if args.maxlen > 0:
@@ -351,8 +352,9 @@ if args.cwarmupsteps > 0:
     model.c_warmup_steps = args.cwarmupsteps
 
 model.K = args.K
-model.Ke = args.Ke
+model.Kq = args.Kq
 model.Kl = args.Kl
+model.Kb = args.Kb
 
 model.mode = args.mode
 model.q = args.q
@@ -383,7 +385,6 @@ if args.eval_only:
     sys.exit(0)
 
 if args.pretrain_emission:
-    assert(args.mlp)
     # pretrain the content emission
     # the lexical match prior is necessary for training the alignment model
     params = list(model.parameters())
@@ -414,7 +415,7 @@ if args.pretrain_emission:
         ev = model.lutv(v).rename("els", "time").rename("v", "ctxt")
         out = model.Wvy1(
             model.Wvy0(ev).tanh()
-        ).tanh()
+        ).tanh() if args.mlp else ev
         log_py = model.proj(out).log_softmax("vocab")
         nll = -log_py.gather("vocab", y.repeat("k", 1), "k").sum()
         nll.backward()
