@@ -282,15 +282,14 @@ class CrnnLmEqca(LvmA):
             dropout = dropout,
             bidirectional = True,
         ).spec("x", "time", "rnns")
-        if self.qcrnn:
-            self.brnnc = ntorch.nn.LSTM(
-                input_size = x_emb_sz,
-                hidden_size = rnn_sz,
-                num_layers = nlayers,
-                bias = False,
-                dropout = dropout,
-                bidirectional = True,
-            ).spec("x", "time", "rnns")
+        self.brnnc = ntorch.nn.LSTM(
+            input_size = x_emb_sz,
+            hidden_size = rnn_sz,
+            num_layers = nlayers,
+            bias = False,
+            dropout = dropout,
+            bidirectional = True,
+        ).spec("x", "time", "rnns")
 
         self.Wicopy = ntorch.nn.Linear(
             in_features = 2*rnn_sz,
@@ -307,6 +306,13 @@ class CrnnLmEqca(LvmA):
             out_features = 2*rnn_sz,
             bias = False,
         ).spec("t", "rnns")
+
+        self.ivproj = ntorch.nn.Linear(
+            in_features = 2*rnn_sz,
+            out_features = len(Vv),
+            bias = False,
+        ).spec("rnns", "v")
+
 
         self.type(self.dtype)
 
@@ -411,9 +417,9 @@ class CrnnLmEqca(LvmA):
                 ec = r.mean("els").repeat("time", ec.shape["time"])
             log_ea = log_ea.rename("els", "e")
             log_ta = log_ta.rename("els", "t")
-            log_va = log_ea + log_ta
-            vc = log_va.exp().dot(("t", "e"), v2dx)
-            va = log_va.exp()
+            log_ra = log_ea + log_ta
+            rc = log_ra.exp().dot(("t", "e"), v2dx)
+            ra = log_ra.exp()
 
             ea = ea.rename("els", "e")
             ta = ta.rename("els", "t")
@@ -423,11 +429,11 @@ class CrnnLmEqca(LvmA):
             # no need for input feeding ever
             log_ea, ea, ec = [], [], []
             log_ta, ta, tc = [], [], []
-            log_va, va, vc = [], [], []
+            log_ra, ra, rc = [], [], []
             out = []
             etc_t = ntorch.zeros(
                 N, self.r_emb_sz, names=("batch", "rnns")
-            ).to(emb_x.values.device)
+            ).to(emb_x.ralues.device)
             for t in range(T):
                 etc_t = etc_t.rename("rnns", "x")
                 inp = ntorch.cat([emb_x.get("time", t), etc_t], "x").repeat("time", 1)
@@ -437,9 +443,9 @@ class CrnnLmEqca(LvmA):
                 log_ta_t, ta_t, tc_t = attn(rnn_o, emb_t, ut_info.mask)
                 log_ea_t = log_ea_t.rename("els", "e")
                 log_ta_t = log_ta_t.rename("els", "t")
-                log_va_t = log_ea_t + log_ta_t
-                va_t = log_va_t.exp()
-                vc_t = va_t.dot(("t", "e"), v2dx)
+                log_ra_t = log_ea_t + log_ta_t
+                ra_t = log_ra_t.exp()
+                rc_t = ra_t.dot(("t", "e"), v2dx)
                 out.append(
                     self.Wif(ntorch.cat([rnn_o, vc_t, ec_t, tc_t], "rnns"))
                 )
@@ -450,9 +456,9 @@ class CrnnLmEqca(LvmA):
                 log_ta.append(log_ta_t)
                 ta.append(ta_t)
                 tc.append(tc_t)
-                log_va.append(log_va_t)
-                va.append(va_t)
-                vc.append(vc_t)
+                log_ra.append(log_ra_t)
+                ra.append(ra_t)
+                rc.append(rc_t)
 
             output = ntorch.stack(out, "time")
 
@@ -462,14 +468,14 @@ class CrnnLmEqca(LvmA):
             log_ta = ntorch.stack(log_ta, "time")
             ta = ntorch.stack(ta, "time")
             tc = ntorch.stack(tc, "time")
-            log_va = ntorch.stack(log_va, "time")
-            va = ntorch.stack(va, "time")
-            vc = ntorch.stack(vc, "time")
+            log_ra = ntorch.stack(log_ra, "time")
+            ra = ntorch.stack(ra, "time")
+            rc = ntorch.stack(rc, "time")
 
             ea = ea.rename("els", "e")
             ta = ta.rename("els", "t")
 
-        return log_ea, ea, ec, log_ta, ta, tc, log_va, va, vc, output, s
+        return log_ea, ea, ec, log_ta, ta, tc, log_ra, ra, rc, output, s
 
 
     def log_pc(self, rnn_o):
@@ -484,12 +490,12 @@ class CrnnLmEqca(LvmA):
         log_ta, ta, tc = attn(rnn_o, self.Wit(emb_t), ut_info.mask, self.temp)
         log_ea = log_ea.rename("els", "e")
         log_ta = log_ta.rename("els", "t")
-        log_va = log_ea + log_ta
+        log_ra = log_ea + log_ta
         if self.qcrnn:
             rnn_oc, _ = self.brnnc(emb_y.detach(), None, lengths=y_info.lengths) 
         log_c = self.Wicopy(rnn_oc if self.qcrnn else rnn_o).log_softmax("copy") 
 
-        return log_c, log_ea, log_ta, log_va
+        return log_c, log_ea, log_ta, log_ra, rnn_o
 
 
     def sample_a(self, probs, logits, K, dim, sampledim):
@@ -542,7 +548,7 @@ class CrnnLmEqca(LvmA):
         # This may need to be broken up over time of not enough memory...
         # length stuff might be a bit annoying
         #log_pa, pa, ec, rnn_o, s = self.pa0(emb_x, s, x_info, r_info)
-        log_pe, pe, ec, log_pt, pt, tc, log_pv, pv, vc, rnn_o, s = self.pa0(
+        log_pe, pe, ec, log_pt, pt, tc, log_pa, pa, rc, rnn_o, s = self.pa0(
             emb_x, s, x_info, eA, ue_info, tA, ut_info, v2dx)
 
         # use soft attention over everything for p(c | y_<-t)
@@ -552,7 +558,7 @@ class CrnnLmEqca(LvmA):
         # anneal vc to 0
         if self.c_anneal_steps > 0 and self.steps > self.c_warmup_steps:
             wc = self.weight_coef(self.steps - self.c_warmup_steps, self.c_anneal_steps)
-            vc = (1-wc) * vc
+            rc = (1-wc) * rc
 
         K = self.K
 
@@ -567,18 +573,18 @@ class CrnnLmEqca(LvmA):
         elif self.nuisance:
             past = rnn_o.repeat("k", 1).rename("rnns", "ctxt")
         elif self.wcv:
-            past = self.Wcv(ntorch.cat([rnn_o, ec + tc + vc], "rnns")).repeat("k", 1)
+            past = self.Wcv(ntorch.cat([rnn_o, ec + tc + rc], "rnns")).repeat("k", 1)
             if self.tanh:
                 past = past.tanh()
         else:
-            past = self.Wc(ntorch.cat([rnn_o, ec, tc, vc], "rnns")).repeat("k", 1)
+            past = self.Wc(ntorch.cat([rnn_o, ec, tc, rc], "rnns")).repeat("k", 1)
             if self.tanh:
                 past = past.tanh()
         log_py_Ea = self.log_py_ac0(past, y)
 
         if y is not None:
             emb_y = self.luty(y)
-            log_qc, log_qe, log_qt, log_qv = self.log_qac_y(
+            log_qc, log_qe, log_qt, log_qa, brnn_o = self.log_qac_y(
                 emb_y, x_info, emb_e, ue_info, emb_t, ut_info, v2dx)
 
         nll = 0.
@@ -591,8 +597,8 @@ class CrnnLmEqca(LvmA):
         log_py_ac1 = []
 
         # sample only
-        v_s = [] if K > 0 else None
-        v_s_log_qv = [] if K > 0 else None
+        a_s = [] if K > 0 else None
+        a_s_log_qa = [] if K > 0 else None
         e_s = [] if K > 0 else None
         e_s_log_qe = [] if K > 0 else None
         t_s = [] if K > 0 else None
@@ -601,6 +607,7 @@ class CrnnLmEqca(LvmA):
 
         # cat over time
         rnn_grads = []
+        brnn_grads = []
         log_py_Ea_grads = []
 
         # cat over time
@@ -610,7 +617,7 @@ class CrnnLmEqca(LvmA):
         log_qc_grads = []
         log_qe_grads = []
         log_qt_grads = []
-        log_qv_y_grads = []
+        log_qa_y_grads = []
 
         # sum over time
         v2dx_grads = []
@@ -621,13 +628,15 @@ class CrnnLmEqca(LvmA):
         # pick and use either e and t or v...
         for t, (
             rnn_t,
+            brnn_t,
             log_py_Ea_t,
             log_pc_t, log_pe_t, log_pt_t,
             log_qc_t, log_qe_t, log_qt_t,
-            #log_qv_y_t,
+            #log_qa_y_t,
             y_t,
         ) in enumerate(zip(
             rnn_o.split(T, "time"),
+            brnn_o.split(T, "time"),
             log_py_Ea.split(T, "time"),
             log_pc.split(T, "time"),
             log_pe.split(T, "time"),
@@ -635,11 +644,12 @@ class CrnnLmEqca(LvmA):
             log_qc.split(T, "time"),
             log_qe.split(T, "time"),
             log_qt.split(T, "time"),
-            #log_qv_y.split(T, "time"),
+            #log_qa_y.split(T, "time"),
             (y if y is not None else ec).split(T, "time"),
         )):
             # accumulate gradients by hand so we don't need to retain graph
             rnn_t = rnn_t._new(rnn_t.detach().values.requires_grad_(True))
+            brnn_t = brnn_t._new(brnn_t.detach().values.requires_grad_(True))
             log_py_Ea_t = log_py_Ea_t._new(log_py_Ea_t.detach().values.requires_grad_(True))
             log_pc_t = log_pc_t._new(log_pc_t.detach().values.requires_grad_(True))
             log_pe_t = log_pe_t._new(log_pe_t.detach().values.requires_grad_(True))
@@ -647,7 +657,7 @@ class CrnnLmEqca(LvmA):
             log_qc_t = log_qc_t._new(log_qc_t.detach().values.requires_grad_(True))
             log_qe_t = log_qe_t._new(log_qe_t.detach().values.requires_grad_(True))
             log_qt_t = log_qt_t._new(log_qt_t.detach().values.requires_grad_(True))
-            #log_qv_y_t = log_qv_y_t._new(log_qv_y_t.detach().values.requires_grad_(True))
+            #log_qa_y_t = log_qa_y_t._new(log_qa_y_t.detach().values.requires_grad_(True))
             v2dx_t = v2dx._new(v2dx.detach().values.requires_grad_(True))
             if v2dgx is not None:
                 v2dgx_t = v2dgx._new(v2dx.detach().values.requires_grad_(True))
@@ -662,13 +672,13 @@ class CrnnLmEqca(LvmA):
 
                 # actually, take top k from product dist
                 # then sample from complement
-                log_qv_t = (log_qe_t + log_qt_t).stack(("e", "t"), "v")
-                log_pv_t = (log_pe_t + log_pt_t).stack(("e", "t"), "v")
+                log_qa_t = (log_qe_t + log_qt_t).stack(("e", "t"), "v")
+                log_pa_t = (log_pe_t + log_pt_t).stack(("e", "t"), "v")
 
                 # for baseline
                 if self.Kb > 0:
-                    B_v_s_t, B_v_s_log_qv = self.sample_a(log_qv_t.exp(), log_qv_t, self.Kb, "v", "k")
-                    B_v_s_log_pv = log_pv_t.gather("v", B_v_s_t, "k")
+                    B_a_s_t, B_a_s_log_qa = self.sample_a(log_qa_t.exp(), log_qa_t, self.Kb, "v", "k")
+                    B_a_s_log_pa = log_pa_t.gather("v", B_a_s_t, "k")
 
                 if self.Kl > 0:
                     # get top likelihoods from cache
@@ -686,16 +696,17 @@ class CrnnLmEqca(LvmA):
                 if self.Kq > 0:
                     # take the topk from the complement of the cache samples
                     Ks = self.Kq + self.Kl
-                    C_v_s_log_qv, C_v_s_t = log_qv_t.topk("v", Ks)
+                    C_a_s_log_qa, C_a_s_t = log_qa_t.topk("v", Ks)
                     # already sorted
                     if self.Kl > 0:
+                        # UNFINISHED
                         # batch x time x K
                         batches = []
                         for batch, s_idx in enumerate(idxs):
                             times = []
                             for time in range(rnn_t.shape["time"]):
                                 ok = particles[batch][time]
-                                lol = C_v_s_t[{"batch": batch, "time": time}]
+                                lol = C_a_s_t[{"batch": batch, "time": time}]
                                 lollist = lol.tolist()
                                 lolset = set(lollist)
                                 diff = ok - lolset
@@ -706,78 +717,102 @@ class CrnnLmEqca(LvmA):
                                 while i < take:
                                     if lollist[i] not in ok:
                                         samples.append(lollist[i])
-                                        i += 1
+                                    i += 1
                                 samples.extend(list(ok))
+                                import pdb; pdb.set_trace()
                                 if self.steps > 0:
                                     import pdb; pdb.set_trace()
                                 times.append(samples)
                             batches.append(times)
-                        shape = C_v_s_t.shape
-                        C_v_s_t = NamedTensor(
-                            torch.LongTensor(batches).to(C_v_s_t.values.device),
+                        shape = C_a_s_t.shape
+                        C_a_s_t = NamedTensor(
+                            torch.LongTensor(batches).to(C_a_s_t.values.device),
                             names = ("batch", "time", "v"),
                         )
-                        C_v_s_log_qv = log_qv_t.gather("v", C_v_s_t, "v")
+                        C_a_s_log_qa = log_qa_t.gather("v", C_a_s_t, "v")
                         if self.steps > 0:
                             import pdb; pdb.set_trace()
-                    C_v_s_log_pv = log_pv_t.gather("v", C_v_s_t, "v")
-                    C_v_s_log_qv = C_v_s_log_qv.rename("v", "k")
-                    C_v_s_log_pv = C_v_s_log_pv.rename("v", "k")
-                    C_v_s_t = C_v_s_t.rename("v", "k")
+                    C_a_s_log_pa = log_pa_t.gather("v", C_a_s_t, "v")
+                    C_a_s_log_qa = C_a_s_log_qa.rename("v", "k")
+                    C_a_s_log_pa = C_a_s_log_pa.rename("v", "k")
+                    C_a_s_t = C_a_s_t.rename("v", "k")
 
                     # weight nll by this
-                    C_v_s_qv = C_v_s_log_qv.exp()
-                    C_Zv = C_v_s_log_qv.logsumexp("k").exp()
+                    C_a_s_qa = C_a_s_log_qa.exp()
+                    C_Za = C_a_s_log_qa.logsumexp("k").exp()
 
 
                 num_enum = self.Kq + self.Kl
                 Kc = self.K - num_enum
-                nC_log_qv = log_qv_t.clone()
+                nC_log_qa = log_qa_t.clone()
                 if self.Kq > 0:
-                    nC_log_qv.scatter_("v", C_v_s_t, C_v_s_log_qv.clone().fill_(float("-inf")), "k")
+                    nC_log_qa.scatter_("v", C_a_s_t, C_a_s_log_qa.clone().fill_(float("-inf")), "k")
                 # reciprocal of normalizing constant, multiply MC term by this
-                nC_Zv = nC_log_qv.logsumexp("v").exp()
-                nC_qv = nC_log_qv.softmax("v")
+                nC_Za = nC_log_qa.logsumexp("v").exp()
+                nC_qa = nC_log_qa.softmax("v")
 
-                nC_v_s_t, nC_v_s_log_qv = self.sample_a(nC_qv, log_qv_t, Kc, "v", "k")
-                nC_v_s_log_pv = log_pv_t.gather("v", nC_v_s_t, "k")
-                nC_v_s_qv = nC_v_s_log_qv.exp()
-
-                # sampled and flatten values at timestep t
-                v2dx_t_flat = (v2dx_t if not self.untie else v2dgx_t).stack(("e", "t"), "r")
+                nC_a_s_t, nC_a_s_log_qa = self.sample_a(nC_qa, log_qa_t, Kc, "v", "k")
+                nC_a_s_log_pa = log_pa_t.gather("v", nC_a_s_t, "k")
+                nC_a_s_qa = nC_a_s_log_qa.exp()
 
 
+                """
                 if self.Kb > 0:
-                    B_v_f_t = v2dx_t_flat.gather("r", B_v_s_t.rename("v", "k"), "k")
+                    B_v_f_t = v2dx_t_flat.gather("r", B_v_s_t, "k")
                 if self.Kq > 0:
-                    C_v_f_t = v2dx_t_flat.gather("r", C_v_s_t.rename("v", "k"), "k")
+                    C_v_f_t = v2dx_t_flat.gather("r", C_v_s_t, "k")
                 nC_v_f_t = v2dx_t_flat.gather("r", nC_v_s_t, "k")
+                """
 
                 samples = []
                 log_probs_q = []
                 log_probs_p = []
                 if self.Kb > 0:
-                    samples.append(B_v_f_t)
-                    log_probs_q.append(B_v_s_log_qv)
-                    log_probs_p.append(B_v_s_log_pv)
+                    samples.append(B_a_s_t)
+                    log_probs_q.append(B_a_s_log_qa)
+                    log_probs_p.append(B_a_s_log_pa)
                 if self.Kq > 0:
-                    samples.append(C_v_f_t)
-                    log_probs_q.append(C_v_s_log_qv)
-                    log_probs_p.append(C_v_s_log_pv)
+                    samples.append(C_a_s_t)
+                    log_probs_q.append(C_a_s_log_qa)
+                    log_probs_p.append(C_a_s_log_pa)
                 if Kc > 0:
-                    samples.append(nC_v_f_t)
-                    log_probs_q.append(nC_v_s_log_qv)
-                    log_probs_p.append(nC_v_s_log_pv)
-                v_f_t = ntorch.cat(samples, "k")
-                v_s_log_qv_t = ntorch.cat(log_probs_q, "k")
-                v_s_log_pv_t = ntorch.cat(log_probs_p, "k")
-                import pdb; pdb.set_trace()
+                    samples.append(nC_a_s_t)
+                    log_probs_q.append(nC_a_s_log_qa)
+                    log_probs_p.append(nC_a_s_log_pa)
+                a_s_t = ntorch.cat(samples, "k")
+                a_s_log_qa_t = ntorch.cat(log_probs_q, "k")
+                a_s_log_pa_t = ntorch.cat(log_probs_p, "k")
+                #import pdb; pdb.set_trace()
 
                 # for weighting only, detach before using in all cases
-                # \sum_v q(v) g(v) + q(nC)E_{v~nC}[g(v)]
-                v_s_qv_t = ntorch.cat([C_v_s_qv, nC_Zv.repeat("k", Kc) / Kc], "k")
+                # \sum_a q(a) g(a) + q(nC)E_{a~nC}[g(a)]
+                a_s_qa_t = ntorch.cat([C_a_s_qa, nC_Za.repeat("k", Kc) / Kc], "k")
 
-                ctxt = v_f_t
+                # sampled and flatten values at timestep t
+                v2dx_t_flat = (v2dx_t if not self.untie else v2dgx_t).stack(("e", "t"), "r")
+                ctxt = v2dx_t_flat.gather("r", a_s_t.rename("v", "k"), "k")
+
+                # targets should be in vocab space
+                # since v has been used for alignment, use 
+                v_flat = v2d.stack(("e", "t"), "r")
+                # the actual sample alignment values
+                v_k_t = v_flat.gather("r", a_s_t.rename("v", "k"), "k")
+
+                # get likelihood of v_k_t | y
+                e_s_t = a_s_t.div(ut.shape["els"])
+                t_s_t = a_s_t.fmod(ut.shape["els"])
+                #ma = v_k_t[{"k": 40, "time": 0, "batch": 0}]
+                #mb = e_k_t[{"k": 40, "time": 0, "batch": 0}]
+                #mc = t_k_t[{"k": 40, "time": 0, "batch": 0}]
+                # assert(ma == mb * ut.shape["els"] + mc)
+                em = emb_e.gather("els", e_s_t, "k").rename("e", "rnns")
+                tm = emb_t.gather("els", t_s_t, "k").rename("t", "rnns")
+                log_pv = self.vproj(ntorch.cat([em, tm], "rnns")).gather(
+                    "v", v_k_t.repeat("m", 1), "m",
+                ).get("m", 0)
+                log_qv_ay = self.ivproj(brnn_t).log_softmax("v").gather(
+                    "v", v_k_t, "k",
+                )
 
                 # TODO, try concatenating entity and type with value
                 past = self.Wcv(ntorch.cat(
@@ -816,7 +851,7 @@ class CrnnLmEqca(LvmA):
                 
                 lpct = math.log(.5) if self.jointcopy else log_pc_t
 
-                # train log_qc
+                # train log_qc as well as log_qv_ay
                 if self.qconly:
                     raise NotImplementedError
                     Eqac_log_py_ac_t = (
@@ -875,9 +910,9 @@ class CrnnLmEqca(LvmA):
                     Eqa_log_py_a_t = logaddexp(
                         log_pc_t.get("copy", 0) + log_py_c0_t,
                         log_pc_t.get("copy", 1) + log_py_ac1_t
-                            + v_s_log_pv_t - v_s_log_qv_t,
+                            + a_s_log_pa_t - a_s_log_qa_t,
                     )
-                    nll_t = -(Eqa_log_py_a_t * v_s_qv_t.detach()).sum("k")[y_maskt].sum()
+                    nll_t = -(Eqa_log_py_a_t * a_s_qa_t.detach()).sum("k")[y_maskt].sum()
                     log_py_z = Eqa_log_py_a_t
 
                     kl_e_t = self.kl(
@@ -899,14 +934,14 @@ class CrnnLmEqca(LvmA):
                     Eqa_log_py_a_t = logaddexp(
                         log_py_c0_t + math.log(0.5),
                         log_py_ac1_t + math.log(0.5)
-                            + (v_s_log_pv_t - v_s_log_qv_t),# * kl_coef,
+                            + (a_s_log_pa_t - a_s_log_qa_t),# * kl_coef,
                     )
                     if self.Kb > 0:
                         Bt = Eqa_log_py_a_t.narrow("k", 0, self.Kb).mean("k")
                         log_py_z = Eqa_log_py_a_t.narrow("k", self.Kb, K)
                     else:
                         log_py_z = Eqa_log_py_a_t
-                    nll_t = -(log_py_z * v_s_qv_t.detach()).sum("k")[y_maskt].sum()
+                    nll_t = -(log_py_z * a_s_qa_t.detach()).sum("k")[y_maskt].sum()
 
                     kl_e_t = self.kl(
                         qe_t,
@@ -932,8 +967,8 @@ class CrnnLmEqca(LvmA):
                         Bt = log_py_Ea_t
                     score = (log_py_z - Bt).detach()
                     self.delta = (log_py_z.exp() - Bt.exp()).detach()
-                    rewardt = score * v_s_log_qv_t.narrow("k", self.Kb, K)
-                    rewardt = -(rewardt * v_s_qv_t.detach()).sum("k")[y_maskt].sum()
+                    rewardt = score * a_s_log_qa_t.narrow("k", self.Kb, K)
+                    rewardt = -(rewardt * a_s_qa_t.detach()).sum("k")[y_maskt].sum()
                     if self.qconly:
                         rewardt = 0
                     if self.kl_anneal_steps > 0:
@@ -1003,8 +1038,8 @@ class CrnnLmEqca(LvmA):
                 t_s.append(t_s_t.detach())
                 t_s_log_qt.append(t_s_log_qt_t.detach())
                 """
-                v_s.append(ntorch.cat([C_v_s_t, nC_v_s_t], "k"))
-                v_s_log_qv.append(v_s_log_qv_t.detach())
+                a_s.append(ntorch.cat([C_a_s_t, nC_a_s_t], "k"))
+                a_s_log_qa.append(a_s_log_qa_t.detach())
                 log_py_c0.append(log_py_c0_t.detach())
                 log_py_ac1.append(log_py_ac1_t.detach())
             else:
@@ -1033,6 +1068,8 @@ class CrnnLmEqca(LvmA):
             self.steps += 1
             if rnn_grads:
                 rnn_grads = ntorch.cat(rnn_grads, "time")
+            if brnn_grads:
+                brnn_grads = ntorch.cat(brnn_grads, "time")
             if log_py_Ea_grads:
                 log_py_Ea_grads = ntorch.cat(log_py_Ea_grads, "time")
             if not self.jointcopy:
@@ -1047,8 +1084,8 @@ class CrnnLmEqca(LvmA):
                 log_qe_grads = ntorch.cat(log_qe_grads, "time")
             if log_qt_grads:
                 log_qt_grads = ntorch.cat(log_qt_grads, "time")
-            if log_qv_y_grads:
-                log_qv_y_grads = ntorch.cat(log_qv_y_grads, "time")
+            if log_qa_y_grads:
+                log_qa_y_grads = ntorch.cat(log_qa_y_grads, "time")
             v2dx_grads = sum(v2dx_grads)
             v2dgx_grads = sum(v2dgx_grads)
 
@@ -1057,6 +1094,9 @@ class CrnnLmEqca(LvmA):
             if rnn_grads:
                 bwd_outputs.append(rnn_o.values)
                 bwd_grads.append(rnn_grads.values)
+            if brnn_grads:
+                bwd_outputs.append(brnn_o.values)
+                bwd_grads.append(brnn_grads.values)
             if log_pe_grads:
                 bwd_outputs.append(log_pe.values)
                 bwd_grads.append(log_pe_grads.values)
@@ -1069,9 +1109,9 @@ class CrnnLmEqca(LvmA):
             if log_qt_grads:
                 bwd_outputs.append(log_qt.values)
                 bwd_grads.append(log_qt_grads.values)
-            if log_qv_y_grads:
-                bwd_outputs.append(log_qv_y.values)
-                bwd_grads.append(log_qv_y_grads.values)
+            if log_qa_y_grads:
+                bwd_outputs.append(log_qa_y.values)
+                bwd_grads.append(log_qa_y_grads.values)
             if v2dx_grads and v2dx.values.requires_grad:
                 # glove has frozen embeddings
                 bwd_outputs.append(v2dx.values)
@@ -1093,8 +1133,8 @@ class CrnnLmEqca(LvmA):
             backward(bwd_outputs, bwd_grads)
 
         if K > 0:
-            v_s = ntorch.cat(v_s, "time")
-            v_s_log_qv = ntorch.cat(v_s_log_qv, "time")
+            a_s = ntorch.cat(a_s, "time")
+            a_s_log_qa = ntorch.cat(a_s_log_qa, "time")
         log_py_c0 = ntorch.cat(log_py_c0, "time")
         log_py_ac1 = ntorch.cat(log_py_ac1, "time")
         #log_py_a = ntorch.cat(log_py_a, "time")
@@ -1116,8 +1156,8 @@ class CrnnLmEqca(LvmA):
             e_s_log_p  = e_s_log_qe,
             t_s        = t_s,
             t_s_log_p  = t_s_log_qt,
-            v_s        = v_s,
-            v_s_log_p  = v_s_log_qv,
+            a_s        = a_s,
+            a_s_log_p  = a_s_log_qa,
             log_py_Ea  = log_py_Ea,
         )
         #import pdb; pdb.set_trace()

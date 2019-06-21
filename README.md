@@ -16,6 +16,13 @@
 * translation model CRF, and figure out induction
 
 ### Coding
+
+#### p(v|y) and eval
+* Maximize likelihood of value given words and alignment
+* Approximate q(c|y) (at end of training)
+* Compute precision and recall from greedily extracted alignments and translation
+  versus ground truth data table 
+
 #### Replay Buffer
 * Key on time and example
 * Need to have unique key for each example (idx)

@@ -32,8 +32,8 @@ class RvInfo:
         e_s_log_p  = None,
         t_s        = None,
         t_s_log_p  = None,
-        v_s        = None,
-        v_s_log_p  = None,
+        a_s        = None,
+        a_s_log_p  = None,
         log_py_Ea  = None,
     ):
         self.log_py     = log_py   
@@ -50,8 +50,8 @@ class RvInfo:
         self.e_s_log_p  = e_s_log_p
         self.t_s        = t_s      
         self.t_s_log_p  = t_s_log_p
-        self.v_s        = v_s      
-        self.v_s_log_p  = v_s_log_p
+        self.a_s        = a_s      
+        self.a_s_log_p  = a_s_log_p
         self.log_py_Ea  = log_py_Ea
 
 
@@ -262,7 +262,7 @@ class LvmA(Lvm):
                     nleb += yleb.sum()
 
                     vt2d_f = vt2d.stack(("e", "t"), "r")
-                    alignments = vt2d_f.gather("r", rvinfo.v_s, "k")
+                    alignments = vt2d_f.gather("r", rvinfo.a_s, "k")
 
                     a4 += alignments.eq(self.Vx.stoi["4"]).values.any(0)[y4.values].sum()
                     afour += alignments.eq(self.Vx.stoi["4"]).values.any(0)[yfour.values].sum()
@@ -274,7 +274,7 @@ class LvmA(Lvm):
                     aleb += alignments.eq(self.Vx.stoi["lebron"]).values.any(0)[yleb.values].sum()
 
                     if pyn is not None:
-                        better = (pyn < pyc).narrow("k", self.Kl, self.K)
+                        better = (pyn < pyc).narrow("k", self.Kb, self.K)
 
                         betterthe = (pyn.get("k", 0) < pyc.get("k", 0))[ythe]
                         better4 = (pyn.get("k", 0) < pyc.get("k", 0))[y4]
@@ -598,6 +598,7 @@ class LvmA(Lvm):
                         _, t_max = log_pt.get("batch", batch).get("time", t).max("t")
                         e_preds = ue.get("batch", batch).get("els", e_max.item())
                         t_preds = ut.get("batch", batch).get("els", t_max.item())
+                        import pdb; pdb.set_trace()
 
                         correct = (es.eq(e_preds) * ts.eq(t_preds)).any().float().item()
                         e_correct = es.eq(e_preds).any().float().item()

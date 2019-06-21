@@ -34,6 +34,7 @@ from models.lvm import Lvm
 #torch.backends.cudnn.enabled = False
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # debug
 #torch.autograd.set_detect_anomaly(True)
