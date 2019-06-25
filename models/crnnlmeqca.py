@@ -186,6 +186,19 @@ class CrnnLmEqca(LvmA):
                 out_features = len(Vx),
                 bias = False,
             ).spec("ctxt", "vocab")
+        self.vmlp = nn.Sequential(
+            nn.Linear(
+                in_features = 2*rnn_sz,
+                out_features = 2*rnn_sz,
+                bias = False,
+            ),
+            nn.Tanh(),
+            nn.Linear(
+                in_features = 2*rnn_sz,
+                out_features = 2*rnn_sz,
+                bias = False,
+            ),
+        )
         self.vproj = ntorch.nn.Linear(
             in_features = 2*rnn_sz,
             out_features = len(Vv),
@@ -807,10 +820,13 @@ class CrnnLmEqca(LvmA):
                 # assert(ma == mb * ut.shape["els"] + mc)
                 em = emb_e.gather("els", e_s_t, "k").rename("e", "rnns")
                 tm = emb_t.gather("els", t_s_t, "k").rename("t", "rnns")
-                log_pv = self.vproj(ntorch.cat([em, tm], "rnns")).gather(
+                # log probability of sampled record values.
+                # need prior over all values
+                # vmlp
+                a_s_log_pv = self.vproj(ntorch.cat([em, tm], "rnns")).gather(
                     "v", v_k_t.repeat("m", 1), "m",
                 ).get("m", 0)
-                log_qv_ay = self.ivproj(brnn_t).log_softmax("v").gather(
+                a_s_log_qv = self.ivproj(brnn_t).log_softmax("v").gather(
                     "v", v_k_t, "k",
                 )
 
@@ -827,7 +843,6 @@ class CrnnLmEqca(LvmA):
                 elif self.mlp:
                     past = self.Wvy1(self.Wvy0(past).tanh()).tanh()
 
-                #import pdb; pdb.set_trace()
                 #log_py_ac0_t = self.log_py_a(past, y_t)
                 log_py_c0_t = log_py_Ea_t
                 log_py_ac1_t = (
@@ -853,6 +868,7 @@ class CrnnLmEqca(LvmA):
 
                 # train log_qc as well as log_qv_ay
                 if self.qconly:
+                    import pdb; pdb.set_trace()
                     raise NotImplementedError
                     Eqac_log_py_ac_t = (
                         qc_t.get("copy", 0) * log_py_c0_t.detach()
@@ -956,6 +972,8 @@ class CrnnLmEqca(LvmA):
                     kl_t = 0
                     klc_t = 0
                     kl += kl_e_t.detach() + kl_t_t.detach()
+
+                #nll_v_t = -log_pv[y_maskt].sum() if self.train_pv else 0
 
                 nll += nll_t.detach()
 
@@ -1062,6 +1080,23 @@ class CrnnLmEqca(LvmA):
         print(Hqe[Hqe == Hqe].max().item(), Hpe[Hpe == Hpe].max().item())
         import pdb; pdb.set_trace()
         """
+        # prior over values, doesn't need to be broken up over time
+        ok = self.vmlp(
+            ntorch.cat(
+                [
+                    self.lute(r[0]).rename("e", "r"), # e
+                    self.lutt(r[1]).rename("t", "r"), # t
+                ],
+                "r",
+            ).values
+        )
+        lol = NamedTensor(ok, names=("batch", "els", "rnns"))
+        meh = self.vproj(lol).log_softmax("v")
+        log_pv = meh.gather("v", r[2].repeat("m", 1), "m").get("m", 0)
+        #nll_pv = -log_pv.sum("els").mean("batch")
+        nll_pv = -log_pv.mean()
+        #import pdb; pdb.set_trace()
+        # Need to figure out how to backprop this
 
         if learn:
             self.numexamples += 1
@@ -1131,6 +1166,7 @@ class CrnnLmEqca(LvmA):
                 bwd_grads.append(log_pc_grads.values)
             #import pdb; pdb.set_trace()
             backward(bwd_outputs, bwd_grads)
+            nll_pv.backward()
 
         if K > 0:
             a_s = ntorch.cat(a_s, "time")
@@ -1159,6 +1195,9 @@ class CrnnLmEqca(LvmA):
             a_s        = a_s,
             a_s_log_p  = a_s_log_qa,
             log_py_Ea  = log_py_Ea,
+            log_pv     = log_pv,
+            a_s_log_pv = a_s_log_pv,
+            a_s_log_qv = a_s_log_qv,
         )
         #import pdb; pdb.set_trace()
         if self.steps > 1000 and False:

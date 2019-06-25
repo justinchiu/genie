@@ -35,6 +35,9 @@ class RvInfo:
         a_s        = None,
         a_s_log_p  = None,
         log_py_Ea  = None,
+        log_pv     = None,
+        a_s_log_pv = None,
+        a_s_log_qv = None,
     ):
         self.log_py     = log_py   
         self.log_py_c0 = log_py_c0
@@ -53,6 +56,9 @@ class RvInfo:
         self.a_s        = a_s      
         self.a_s_log_p  = a_s_log_p
         self.log_py_Ea  = log_py_Ea
+        self.log_pv     = log_pv
+        self.a_s_log_pv = a_s_log_pv
+        self.a_s_log_qv = a_s_log_qv
 
 
     def __str__(self):

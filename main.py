@@ -1,4 +1,4 @@
- 
+
 import argparse
 import random
 import json
@@ -150,7 +150,7 @@ def get_args():
     parser.add_argument("--jointcopy", action="store_true")
     parser.add_argument("--qc", action="store_true", help="learn qc")
     parser.add_argument("--qcrnn", action="store_true", help="use a sep brnn for qc")
-    parser.add_argument("--qconly", action="store_true", help="use a sep brnn for qc")
+    parser.add_argument("--qconly", action="store_true", help="only train inf net")
 
     parser.add_argument("--temp", type=float, default=1)
     parser.add_argument("--tao", type=float, default=1)
