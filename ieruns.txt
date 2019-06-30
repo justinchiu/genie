@@ -1,0 +1,133 @@
+python main.py --devid 1 --model crnnlmca --tieweights --lr 1e-4 --bsz 6 --K 8 --dp 0 --T 256 --mode elbo --re 10 --klannealsteps 0 --noattnvalues --train-from ie-d-crnnlmca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks10000-scFalse-qqay-nvTrue-jcTrue-wa0/ie-d-crnnlmca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks10000-scFalse-qqay-nvTrue-jcTrue-wa0-e26.pt
+
+
+python main.py --devid 3 --model crnnlmb --tieweights --lr 0.001 --bsz 6 --K 8 --dp 0 --T 256 --mode elbo --re 10 --sigbias 2
+
+# best?
+python main.py --devid 1 --model crnnlmca --tieweights --lr 0.001 --bsz 6 --K 8 --dp 0 --T 256 --mode elbo --re 10 --klannealsteps 10000 --jointcopy
+
+
+########
+
+## TRAINED FROM RUN
+python main.py --devid 2 --model crnnlmca --tieweights --lr 1e-3 --bsz 6 --K 8 --dp 0 --T 256 --mode elbo --re 10 --klannealsteps 0 --noattnvalues --train-from ie-d-crnnlmca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks10000-scFalse-qqay-nvTrue-jcTrue-wa0/ie-d-crnnlmca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks10000-scFalse-qqay-nvTrue-jcTrue-wa0-e26.pt --save
+
+# saved in
+ie-d-crnnlmca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks0-scFalse-qqay-nvTrue-jcFalse-tfTrue/ie-d-crnnlmca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks0-scFalse-qqay-nvTrue-jcFalse-tfTrue-e19.pt
+
+
+#####
+
+# crnnlmb
+ie-d-crnnlmb-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks0-scFalse-qqay-nvFalse-jcFalse-sb2.0-tfFalse/ie-d-crnnlmb-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K8-ks0-scFalse-qqay-nvFalse-jcFalse-sb2.0-tfFalse-e17.pt
+
+python main.py --devid 3 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 8 --dp 0 --T 128 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 —prefix fuck
+
+python main.py --devid 0 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuck --save --temp 5
+
+
+
+python main.py --devid 1 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuck2 --save
+python main.py --devid 1 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --noattnvalues --seed 123 --prefix fuck2 --save
+
+
+python nc_main.py --devid 0 --model nccrnnlm --tieweights --lr 0.001 --bsz 6 --K 2 --dp 0 --T 12 --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuckme --supex 3000
+
+python ie_main.py --devid 3 --bsz 128 --eval-only fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvTrue-jcTrue-tfFalse-qcFalse-qrFalse-t1/fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvTrue-jcTrue-tfFalse-qcFalse-qrFalse-t1-e19.pt --reset
+
+
+MODEL:
+fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1/fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-e19.pt
+
+
+
+
+TRAIN-FROM:
+python main.py --devid 0 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K
+64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --seed 123 --prefix fuck2 --train-from fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1/fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-e19.pt
+
+python main.py --devid 0 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --seed 123 --prefix fuck2 --train-from fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1/fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-e19.pt --qc --qcrnn --qconly --jointcopy
+
+
+
+
+## train from most recent (best)
+python main.py --devid 1 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --seed 123 --prefix fuck2-trainfrom --train-from fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1/fuck2-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-e19.pt --qc --qcrnn --qconly --jointcopy --save
+
+# most recent run, trying separate lut for values, previous usage of word embedding made the model miss 4 == four
+python main.py --devid 0 --model crnnlmqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuck3-lutv --save --v2d
+
+
+
+# analysis
+python analysis.py --devid 1 --qca fuck3-initvy-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-v2dTrue/fuck3-initvy-crnnlmqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-v2dTrue-e29-vloss672153.0627441406.pt
+
+# rao blackwellized gradient
+python main.py --devid 2 --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuck3-eqca --save --initvy --v2d
+python main.py --devid 2 --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuck3-eqca --save --initvy --v2d
+# results
+NLL: 2.316918810328149 || KL: 2.054361332598767
+COPIED: 116,743 vs 36,935 / 247,887
+NLL: 2.6616041211964148 || KL: 2.095441116559347
+Epoch 31 train loss: 2.316918810328149 valid loss: 2.6616041211964148
+
+
+# try?
+python main.py --devid 2 --model crnnlma --tieweights --lr 0.001 --bsz 6 --K 8 --dp 0 --T 256 --mode elbo --re 10 --klannealsteps 10000 --jointcopy --save --prefix dbg-soft --initu
+python main.py --devid 2 --model crnnlma --tieweights --lr 0.001 --bsz 6 --K 8 --dp 0 --T 256 --mode elbo --re 10 --klannealsteps 10000 --jointcopy --save --prefix dbg-soft
+python main.py --devid 3 --model crnnlmsa --tieweights --lr 0.001 --bsz 6 --K 64 --Ke 16 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix dbg-soft --save
+
+
+python main.py --devid 0 --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --K 32 --Ke 16 --dp 0 --T 32 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix DBG --save --dataset nyt --filepath nyt/nyt10/ --minfreq 2
+
+# enumerate over 16, Ke=16
+# v2d=lutx, good results???
+python main.py --devid 1 --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --K 64 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix fuck3-eqca --save
+
+
+(ntensor) [jchiu@sum1gpu03 rotowIrE]$  python ie_main.py --devid 1 --model crnnlmca --dp 0 --bsz 64 --eval-only fuck3-eqca-crnnlmeqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-v2dFalse-vyFalse/fuck3-eqca-crnnlmeqca-elbo-es256-rs256-b6-lr0.001-lrd0.1-dp0.0-twTrue-ifFalse-saFalse-K64-ks0-scFalse-qqay-nvFalse-jcTrue-tfFalse-qcFalse-qrFalse-t1-v2dFalse-vyFalse-e31-vloss691212.8107910156.pt
+
+Epoch 31 lr 1.0000000000000004e-08
+100%|████████████████████████████████████| 567/567 [20:01<00:00,  1.73s/it, elbo=4.44, gnorm=0.938, kl=1.9, nll=2.54]COPIED: 502,454 vs 170,996 / 1,139,455
+NLL: 2.5287837214906195 || KL: 1.945934227207991
+COPIED: 109,893 vs 36,935 / 247,887
+NLL: 2.7884189602158065 || KL: 1.9976182311057118
+Epoch 31 train loss: 2.5287837214906195 valid loss: 2.7884189602158065
+
+acc: 0.8214181256006351 | E acc: 0.8495800777169599 | T acc: 0.9127743522094418
+total supervised cells: 167531.0
+train loss: 17.20026879470255
+acc: 0.8124466003362456 | E acc: 0.8405589394482265 | T acc: 0.9124658931179891
+total supervised cells: 36283.0
+valid loss: 19.050485398637104
+
+# try gumbel again, “cold start”
+
+
+
+### most recent
+python main.py --devid 1 --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --K 64 --Ke 32 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --qtao 1 --prefix lolhuh --seed 123 --cwarmupsteps 1000 --cannealsteps 1000 --Kl 32 --nuisance --train-from dbg-crnnlmsa-a-crnnlmsa-v2dFalse-mlpFalse-hardFalse-fixFalse-maskFalse/dbg-crnnlmsa-a-crnnlmsa-v2dFalse-mlpFalse-hardFalse-fixFalse-maskFalse-e31-vloss2.53.pt --qwarmupsteps 512 --qsteps 0 --save
+lolhuh-crnnlmeqca-es256-rs256-b6-lr0.001-dp0.0-twTrue-K64-Ke32-Kl32-ks0-scFalse-qqay-nvFalse-jcTrue-tfTrue-qcFalse-qrFalse-t1-v2dFalse-vyFalse-gFalse-nTrue-tFalse-bFalse-mFalse-cs1000-cw1000-pe0-uFalse-qs512-0/lolhuh-crnnlmeqca-es256-rs256-b6-lr0.001-dp0.0-twTrue-K64-Ke32-Kl32-ks0-scFalse-qqay-nvFalse-jcTrue-tfTrue-qcFalse-qrFalse-t1-v2dFalse-vyFalse-gFalse-nTrue-tFalse-bFalse-mFalse-cs1000-cw1000-pe0-uFalse-qs512-0-e31-vloss2.89.pt
+
+
+
+## genie
+python main.py --filepath ../rotowIrE/rotowire --devid 1 --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --K 64 --Ke 32 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --qtao 1 --prefix lolhuh --seed 123 --cwarmupsteps 1000 --cannealsteps 1000 --Kl 32 --nuisance --train-from ../rotowIrE/dbg-crnnlmsa-a-crnnlmsa-v2dFalse-mlpFalse-hardFalse-fixFalse-maskFalse/dbg-crnnlmsa-a-crnnlmsa-v2dFalse-mlpFalse-hardFalse-fixFalse-maskFalse-e31-vloss2.53.pt --qwarmupsteps 512 --qsteps 0
+
+NEW
+
+
+
+## soft
+python main.py --filepath ../rotowIrE/rotowire --devid 3 --model crnnlmsa --tieweights --lr 0.001 --bsz 6 --K 64 --Ke 16 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --seed 123 --prefix soft --save
+
+
+## TODO
+- convince me that variance reduction is working: measure variance of gradient estimator at each epoch for different Kq? (in original) and also show 
+
+
+pretrain-crnnlmeqca-es256-rs256-b6-lr0.001-dp0.0-twTrue-K64-Ke32-Kl32-ks0-scFalse-qqay-nvFalse-jcTrue-tfTrue-qcFalse-qrFalse-t1-v2dFalse-vyFalse-nTrue-tFalse-bFalse-mFalse-cs1000-cw1000-pe0-uFalse-qs512-0-e25-vloss2.89.pt
+
+python main.py --filepath ../rotowIrE/rotowire --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --qtao 1 --prefix lolhuh --seed 123 --cwarmupsteps 1000 --cannealsteps 1000 --nuisance --train-from ../rotowIrE/dbg-crnnlmsa-a-crnnlmsa-v2dFalse-mlpFalse-hardFalse-fixFalse-maskFalse/dbg-crnnlmsa-a-crnnlmsa-v2dFalse-mlpFalse-hardFalse-fixFalse-maskFalse-e31-vloss2.53.pt --qwarmupsteps 512 --qsteps 0 --devid 0 --K 64 --Kq 16 --Kb 16 --Kl 0
+python main.py --filepath ../rotowIrE/rotowire --model crnnlmeqca --tieweights --lr 0.001 --bsz 6 --dp 0 --T 64 --mode elbo --re 10 --klannealsteps 0 --jointcopy --qtao 1 --prefix q-lolhuh --seed 123 --cwarmupsteps 1000 --cannealsteps 1000 --nuisance --train-from lolhuh-crnnlmeqca-es256-rs256-b6-lr0.001-dp0.0-twTrue-K64-Kq16-Kl0-Kb16-ks0-scFalse-qqay-nvFalse-jcTrue-tfTrue-qcFalse-qrFalse-t1-v2dFalse-vyFalse-nTrue-tFalse-bFalse-mFalse-cs1000-cw1000-pe0-uFalse-qs512-0/lolhuh-crnnlmeqca-es256-rs256-b6-lr0.001-dp0.0-twTrue-K64-Kq16-Kl0-Kb16-ks0-scFalse-qqay-nvFalse-jcTrue-tfTrue-qcFalse-qrFalse-t1-v2dFalse-vyFalse-nTrue-tFalse-bFalse-mFalse-cs1000-cw1000-pe0-uFalse-qs512-0-e25-vloss2.87.pt --qwarmupsteps 0 --qsteps 0 --devid 3 --K 64 --Kq 16 --Kb 16 --Kl 0 --qconly
+

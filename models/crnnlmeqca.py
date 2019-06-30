@@ -868,14 +868,18 @@ class CrnnLmEqca(LvmA):
 
                 # train log_qc as well as log_qv_ay
                 if self.qconly:
-                    import pdb; pdb.set_trace()
-                    raise NotImplementedError
+                    #import pdb; pdb.set_trace()
+                    #raise NotImplementedError
                     Eqac_log_py_ac_t = (
                         qc_t.get("copy", 0) * log_py_c0_t.detach()
                         + qc_t.get("copy", 1) * log_py_ac1_t.detach()
                     )
                     #import pdb; pdb.set_trace()
-                    log_py_z = Eqac_log_py_ac_t
+                    if self.Kb > 0:
+                        Bt = Eqac_log_py_ac_t.narrow("k", 0, self.Kb).mean("k")
+                        log_py_z = Eqac_log_py_ac_t.narrow("k", self.Kb, K)
+                    else:
+                        log_py_z = Eqa_log_py_ac_t
                     nll_t = -Eqac_log_py_ac_t.mean("k")[y_maskt].sum()
                     # kl[qc || pc]
                     # can sum over copy first but by fubini doesn't matter
